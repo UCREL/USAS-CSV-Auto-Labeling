@@ -1,0 +1,296 @@
+import logging
+import re
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+TAG_RE = re.compile(r"^[A-Z](\d+)?((\.\d+)+)?")
+ALT_TAG_RE = re.compile(r"^[a-z](\d+)((\.\d+)+)?")
+POSITIVE_MARKERS_RE = re.compile(r"\++")
+NEGATIVE_MARKERS_RE = re.compile(r"\-+")
+
+class USASTag(BaseModel):
+    """
+    Represents all of the properties associated with a USAS tag.
+
+    Attributes:
+        tag: The USAS tag.
+        number_positive_markers: The number of positive markers.
+        number_negative_markers: The number of negative markers.
+        rarity_marker_1: True if the USAS tag contains the rarity marker %.
+        rarity_marker_2: True if the USAS tag contains the rarity marker @.
+        female: True if the USAS tag contains the female marker denoted by `f`.
+        male: True if the USAS tag contains the male marker denoted by `m`.
+        antecedents: True if the USAS tag contains the antecedents marker denoted by `c`.
+    """
+
+    tag: str = Field(title="USAS Tag", description="USAS Tag", examples=["A1.1.1"])
+    number_positive_markers: int = Field(
+        0,
+        title="Positive Markers",
+        description="Number of positive markers.",
+        examples=[0, 1, 2, 3],
+    )
+    number_negative_markers: int = Field(
+        0,
+        title="Negative Markers",
+        description="Number of negative markers.",
+        examples=[0, 1, 2, 3],
+    )
+    rarity_marker_1: bool = Field(
+        False, title="Rare Marker 1", description="Rarity marker 1 indicated by %"
+    )
+    rarity_marker_2: bool = Field(
+        False, title="Rare Marker 2", description="Rarity marker 2 indicated by @"
+    )
+    female: bool = Field(False, title="Female", description="Female")
+    male: bool = Field(False, title="Male", description="Male")
+    antecedents: bool = Field(
+        False,
+        title="Antecedents",
+        description="Potential antecedents of conceptual anaphors (neutral for number)",
+    )
+    neuter: bool = Field(False, title="Neuter", description="Neuter")
+    idiom: bool = Field(False, title="Idiom", description="Is it an idiom")
+
+
+class USASTagGroup(BaseModel):
+    """
+    Represents a grouping of one or more USAS tags that are associated to a
+    token.
+
+    Attributes:
+        tags: A list of USAS tags that are associated to a token. This grouping
+            of USAS tags is a way of representing multi tag membership.
+    """
+
+    _tags_description = (
+        "A grouping of one or more USAS tags whereby if more "
+        "than one exists then the word is an equal member of "
+        "all semantic tags/categories"
+    )
+    _tags_examples = [
+        [USASTag(tag="A1.1.1")],
+        [
+            USASTag(tag="E2", number_negative_markers=1),
+            USASTag(tag="S7.1", number_positive_markers=1),
+        ],
+    ]
+    tags: list[USASTag] = Field(
+        title="USAS Tags", description=_tags_description, examples=_tags_examples
+    )
+
+
+
+
+def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
+    """
+    Given a the string that represents the USAS tags produced by the USAS
+    tagger for one token it converts this into structured format.
+
+    Complex examples of `usas_tag_group_text`:
+    `L1 E3- O4.2- X5.2+ A6.2- A1.7- A7- W3 L2 F1 S1.2.4- Z2 Z2/S2mf Z3 O4.3 G1.2 G1.2/S2mf`
+
+    Args:
+        usas_tag_group_text: The string that represents the USAS tags
+            produced by the USAS tagger for one token.
+    Returns:
+        list[USASTagGroup]: structured format of the USAS tags.
+    """
+
+    def parse_usas_tag(usas_tag_text: str) -> USASTag:
+        """
+        Given a single USAS tag text, e.g. `X5.2+` it is converted into
+        a structured format.
+
+        Note: a USAS tag text should not contain a `/`,
+        e.g. `G1.2/S2mf` as this contains two USAS tags that represent
+        a combined semantic meaning of a token.
+
+        Args:
+            usas_tag_text: Single USAS tag text
+        Returns:
+            USASTag: A structured format of the USAS tag.
+        """
+
+        tag_match = TAG_RE.match(usas_tag_text)
+        tag = ""
+
+        if tag_match:
+            tag = tag_match.group()
+            usas_tag_text = TAG_RE.sub("", usas_tag_text)
+        elif ALT_TAG_RE.match(usas_tag_text):
+            alt_tag_match = ALT_TAG_RE.match(usas_tag_text)
+            assert alt_tag_match is not None
+            tag = alt_tag_match.group()
+            usas_tag_text = ALT_TAG_RE.sub("", usas_tag_text)
+        else:
+            raise ValueError(
+                f"Cannot find the tag for this USAS tag text: {usas_tag_text}"
+            )
+
+        number_positive_markers = 0
+        positive_marker_match = POSITIVE_MARKERS_RE.search(usas_tag_text)
+        if positive_marker_match:
+            number_positive_markers = len(positive_marker_match.group())
+            usas_tag_text = POSITIVE_MARKERS_RE.sub("", usas_tag_text)
+
+        number_negative_markers = 0
+        negative_marker_match = NEGATIVE_MARKERS_RE.search(usas_tag_text)
+        if negative_marker_match:
+            number_negative_markers = len(negative_marker_match.group())
+            usas_tag_text = NEGATIVE_MARKERS_RE.sub("", usas_tag_text)
+
+        is_male = False
+        if "m" in usas_tag_text:
+            is_male = True
+
+        is_female = False
+        if "f" in usas_tag_text:
+            is_female = True
+
+        contain_rare_marker_1 = False
+        if "%" in usas_tag_text:
+            contain_rare_marker_1 = True
+
+        contain_rare_marker_2 = False
+        if "@" in usas_tag_text:
+            contain_rare_marker_2 = True
+
+        contains_antecedent = False
+        if "c" in usas_tag_text:
+            contains_antecedent = True
+
+        contains_neuter = False
+        if "n" in usas_tag_text:
+            contains_neuter = True
+
+        # Currently do not support finding idioms
+        is_idiom = False
+
+        return USASTag(
+            tag=tag,
+            male=is_male,
+            female=is_female,
+            rarity_marker_1=contain_rare_marker_1,
+            rarity_marker_2=contain_rare_marker_2,
+            number_positive_markers=number_positive_markers,
+            number_negative_markers=number_negative_markers,
+            antecedents=contains_antecedent,
+            neuter=contains_neuter,
+            idiom=is_idiom,
+        )
+
+    token_usas_tags: list[USASTagGroup] = []
+
+    for usas_tag_group in usas_tag_group_text.split(" "):
+        usas_tags: list[USASTag] = []
+        for usas_tag_text in usas_tag_group.split("/"):
+            usas_tags.append(parse_usas_tag(usas_tag_text))
+        token_usas_tags.append(USASTagGroup(tags=usas_tags))
+
+    return token_usas_tags
+
+
+def load_usas_mapper(usas_tag_descriptions_file: Path | None,
+                     tags_to_filter_out: set[str] | None
+                     ) -> dict[str, str]:
+    """
+    Returns a dictionary of USAS tags and their descriptions.
+
+    Args:
+        usas_tag_descriptions_file: The path to the YAML file that
+            contains the USAS tags and their descriptions. If None then the
+            function will use the USAS tags and description file that is located
+            within the package at `usas_csv_auto_labeling/data/usas/usas_mapper.yaml`.
+        tags_to_filter_out: A set of USAS tags to filter out.
+
+    Returns:
+        dict[str, str]: A dictionary of USAS tags and their descriptions.
+    
+    Raises:
+        FileNotFoundError: If the `usas_tag_descriptions_file` is not found.
+        ValueError: If the `usas_tag_descriptions_file` is not a file.
+    """
+
+    def _get_usas_tag_descriptions(usas_tag_name: str,
+                                   usas_tag_dict: dict[str, Any],
+                                   collected_tag_descriptions: dict[str, str]
+                                   ) -> dict[str, str]:
+        """
+        A recursive function that loops through the `usas_tag_dict` and returns a
+        dictionary of the USAS tag and as a value it's description. Each USAS tag
+        that is found is added to the `collected_tag_descriptions` dictionary.
+        Once all the USAS tags are found, the `collected_tag_descriptions` is
+        returned.
+
+        The description is made of the USAS tag title and description in the
+        following format: `title: <title> description: <description>`
+
+        Args:
+            usas_tag_name: The name of the USAS tag.
+            usas_tag_dict: A dictionary containing the raw
+                USAS tag data that is read from the YAML file.
+            collected_tag_descriptions: A dictionary of all
+                USAS tags and their descriptions.
+
+        Returns:
+            dict[str, str]: A dictionary of USAS tags and their descriptions.
+        """
+        if "title" in usas_tag_dict and "description" in usas_tag_dict:
+            title_description = f"title: {usas_tag_dict['title']} description: {usas_tag_dict['description']}"
+            if usas_tag_name in collected_tag_descriptions:
+                raise KeyError(f"Duplicate usas tag name found: {usas_tag_name} "
+                               "when reading the following data: "
+                               f"{usas_tag_dict}, currently found usas tags: "
+                               f"{collected_tag_descriptions}")
+            collected_tag_descriptions[usas_tag_name] = title_description.strip()
+        elif "title" in usas_tag_dict:
+            raise KeyError("No description key found when it is expected for: "
+                           f"{usas_tag_name} {usas_tag_dict}")
+        elif "description" in usas_tag_dict:
+            raise KeyError("No title key found when it is expected for: "
+                           f"{usas_tag_name} {usas_tag_dict}")
+
+        keys_to_ignore = set(["title", "description"])
+        for child_usas_tag_name, child_usas_tag_dict in usas_tag_dict.items():
+            if child_usas_tag_name not in keys_to_ignore:
+                collected_tag_descriptions = _get_usas_tag_descriptions(child_usas_tag_name,
+                                                                          child_usas_tag_dict,
+                                                                                        collected_tag_descriptions)
+        return collected_tag_descriptions
+
+    usas_tag_descriptions_file_path: Path = Path()
+    if usas_tag_descriptions_file is None:
+        usas_tag_descriptions_file_str = str(files("usas_csv_auto_labeling").joinpath("data/usas/usas_mapper.yaml"))
+        usas_tag_descriptions_file_path = Path(usas_tag_descriptions_file_str)
+    else:
+        usas_tag_descriptions_file_path = usas_tag_descriptions_file
+
+    if usas_tag_descriptions_file_path.exists() is False:
+        raise FileNotFoundError(f"USAS tag descriptions file not found at: "
+                                f"{usas_tag_descriptions_file_path}")
+    elif usas_tag_descriptions_file_path.is_file() is False:
+        raise ValueError(f"USAS tag descriptions file is not a file: "
+                         f"{usas_tag_descriptions_file_path}")
+
+    usas_mapping: dict[str, str] = {}
+    with usas_tag_descriptions_file_path.open("r") as usas_mapper_fp:
+        usas_mapping_data = usas_mapper_fp.read()
+        for high_level_usas_tag, high_level_usas_tag_dict in yaml.safe_load(usas_mapping_data).items():
+            usas_mapping = _get_usas_tag_descriptions(high_level_usas_tag,
+                                                      high_level_usas_tag_dict,
+                                                      usas_mapping)
+    if tags_to_filter_out:
+        tmp_usas_mapping = {}
+        for key, value in usas_mapping.items():
+            if key in tags_to_filter_out:
+                continue
+            tmp_usas_mapping[key] = value
+        usas_mapping = tmp_usas_mapping
+    return usas_mapping
