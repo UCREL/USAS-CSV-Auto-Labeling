@@ -3,6 +3,133 @@ from pathlib import Path
 import pytest
 
 from usas_csv_auto_labeling import data_utils
+from usas_csv_auto_labeling.data_utils import USASTag, USASTagGroup
+
+
+def test_parse_usas_token_group() -> None:
+    """Test the parse_usas_token_group function with various USAS tag formats."""
+    
+    # Test simple single tag
+    result = data_utils.parse_usas_token_group("A1.1.1")
+    expected = [USASTagGroup(tags=[USASTag(tag="A1.1.1")])]
+    assert result == expected
+    
+    # Test tag with positive markers
+    result = data_utils.parse_usas_token_group("X5.2+")
+    expected = [USASTagGroup(tags=[USASTag(tag="X5.2", number_positive_markers=1)])]
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group("X5.2++")
+    expected = [USASTagGroup(tags=[USASTag(tag="X5.2", number_positive_markers=2)])]
+    assert result == expected
+    
+    # Test tag with negative markers
+    result = data_utils.parse_usas_token_group("E3-")
+    expected = [USASTagGroup(tags=[USASTag(tag="E3", number_negative_markers=1)])]
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group("O4.2--")
+    expected = [USASTagGroup(tags=[USASTag(tag="O4.2", number_negative_markers=2)])]
+    assert result == expected
+    
+    # Test tag with gender markers
+    result = data_utils.parse_usas_token_group("S2mf")
+    expected = [USASTagGroup(tags=[USASTag(tag="S2", male=True, female=True)])]
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group("S2m")
+    expected = [USASTagGroup(tags=[USASTag(tag="S2", male=True)])]
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group("S2f")
+    expected = [USASTagGroup(tags=[USASTag(tag="S2", female=True)])]
+    assert result == expected
+    
+    # Test tag with rarity markers
+    result = data_utils.parse_usas_token_group("A1%")
+    expected = [USASTagGroup(tags=[USASTag(tag="A1", rarity_marker_1=True)])]
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group("B2@")
+    expected = [USASTagGroup(tags=[USASTag(tag="B2", rarity_marker_2=True)])]
+    assert result == expected
+    
+    # Test tag with antecedent marker
+    result = data_utils.parse_usas_token_group("A1c")
+    expected = [USASTagGroup(tags=[USASTag(tag="A1", antecedents=True)])]
+    assert result == expected
+    
+    # Test tag with neuter marker
+    result = data_utils.parse_usas_token_group("A1n")
+    expected = [USASTagGroup(tags=[USASTag(tag="A1", neuter=True)])]
+    assert result == expected
+    
+    # Test combined tags with slash
+    result = data_utils.parse_usas_token_group("Z2/S2mf")
+    expected = [USASTagGroup(tags=[
+        USASTag(tag="Z2"),
+        USASTag(tag="S2", male=True, female=True)
+    ])]
+    assert result == expected
+    
+    # Test multiple tag groups
+    result = data_utils.parse_usas_token_group("L1 E3- O4.2-")
+    expected = [
+        USASTagGroup(tags=[USASTag(tag="L1")]),
+        USASTagGroup(tags=[USASTag(tag="E3", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="O4.2", number_negative_markers=1)])
+    ]
+    assert result == expected
+    
+    # Test complex example from docstring
+    result = data_utils.parse_usas_token_group("L1 E3- O4.2- X5.2+ A6.2- A1.7- A7- W3 L2 F1 S1.2.4- Z2 Z2/S2mf Z3 O4.3 G1.2 G1.2/S2mf")
+    expected = [
+        USASTagGroup(tags=[USASTag(tag="L1")]),
+        USASTagGroup(tags=[USASTag(tag="E3", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="O4.2", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="X5.2", number_positive_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="A6.2", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="A1.7", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="A7", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="W3")]),
+        USASTagGroup(tags=[USASTag(tag="L2")]),
+        USASTagGroup(tags=[USASTag(tag="F1")]),
+        USASTagGroup(tags=[USASTag(tag="S1.2.4", number_negative_markers=1)]),
+        USASTagGroup(tags=[USASTag(tag="Z2")]),
+        USASTagGroup(tags=[
+            USASTag(tag="Z2"),
+            USASTag(tag="S2", male=True, female=True)
+        ]),
+        USASTagGroup(tags=[USASTag(tag="Z3")]),
+        USASTagGroup(tags=[USASTag(tag="O4.3")]),
+        USASTagGroup(tags=[USASTag(tag="G1.2")]),
+        USASTagGroup(tags=[
+            USASTag(tag="G1.2"),
+            USASTag(tag="S2", male=True, female=True)
+        ])
+    ]
+    assert result == expected
+    
+    # Test edge cases
+    result = data_utils.parse_usas_token_group("")
+    expected = []
+    assert result == expected
+    
+    result = data_utils.parse_usas_token_group(" ")
+    assert result == expected
+
+    result = data_utils.parse_usas_token_group("   ")
+    assert result == expected
+    
+    # Test invalid tag format
+    with pytest.raises(ValueError):
+        data_utils.parse_usas_token_group("invalid_tag")
+    
+    with pytest.raises(ValueError):
+        data_utils.parse_usas_token_group("123")
+    
+    with pytest.raises(ValueError):
+        data_utils.parse_usas_token_group("L1 invalid_tag")
 
 
 @pytest.mark.parametrize("usas_tag_description_file_str",

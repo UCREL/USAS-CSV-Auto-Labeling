@@ -2,7 +2,7 @@ import logging
 import re
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -10,9 +10,13 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 TAG_RE = re.compile(r"^[A-Z](\d+)?((\.\d+)+)?")
-ALT_TAG_RE = re.compile(r"^[a-z](\d+)((\.\d+)+)?")
 POSITIVE_MARKERS_RE = re.compile(r"\++")
 NEGATIVE_MARKERS_RE = re.compile(r"\-+")
+
+
+# A regular expression that was used to capture edge cases in the original
+# C version of the USAS tagger:
+# ALT_TAG_RE = re.compile(r"^[a-z](\d+)((\.\d+)+)?")
 
 class USASTag(BaseModel):
     """
@@ -27,6 +31,8 @@ class USASTag(BaseModel):
         female: True if the USAS tag contains the female marker denoted by `f`.
         male: True if the USAS tag contains the male marker denoted by `m`.
         antecedents: True if the USAS tag contains the antecedents marker denoted by `c`.
+        neuter: True if the USAS tag contains the neuter marker denoted by `n`.
+        idiom: False, currently not supported and therefore is always False.
     """
 
     tag: str = Field(title="USAS Tag", description="USAS Tag", examples=["A1.1.1"])
@@ -56,7 +62,8 @@ class USASTag(BaseModel):
         description="Potential antecedents of conceptual anaphors (neutral for number)",
     )
     neuter: bool = Field(False, title="Neuter", description="Neuter")
-    idiom: bool = Field(False, title="Idiom", description="Is it an idiom")
+    idiom: Literal[False] = Field(False, title="Idiom",
+                                  description="Is it an idiom, currently not supported and is always False.")
 
 
 class USASTagGroup(BaseModel):
@@ -89,9 +96,15 @@ class USASTagGroup(BaseModel):
 
 
 def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
-    """
-    Given a the string that represents the USAS tags produced by the USAS
-    tagger for one token it converts this into structured format.
+    r"""
+    Given a the string that represents the USAS tags whereby each USAS tag is
+    separated by whitespace it is converted into a structured format.
+
+    This whitespace separation of USAS tags is the format that is produced by the
+    original C version of the USAS tagger when it outputs USAS tags for a given
+    token or meaningful word unit like a Multi Word Expression (MWE).
+
+    The whitespace separation can be one or more spaces, i.e. `    ` or ` `
 
     Complex examples of `usas_tag_group_text`:
     `L1 E3- O4.2- X5.2+ A6.2- A1.7- A7- W3 L2 F1 S1.2.4- Z2 Z2/S2mf Z3 O4.3 G1.2 G1.2/S2mf`
@@ -101,10 +114,14 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
             produced by the USAS tagger for one token.
     Returns:
         list[USASTagGroup]: structured format of the USAS tags.
+    Raises:
+        ValueError: If the USAS tags within the given text cannot be parsed
+            as a USAS tag, whereby each USAS tag after whitespace and `/` split
+            should match the following regex: `[A-Z](\d+)?((\.\d+)+)?`.
     """
 
     def parse_usas_tag(usas_tag_text: str) -> USASTag:
-        """
+        r"""
         Given a single USAS tag text, e.g. `X5.2+` it is converted into
         a structured format.
 
@@ -116,6 +133,9 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
             usas_tag_text: Single USAS tag text
         Returns:
             USASTag: A structured format of the USAS tag.
+        Raises:
+            ValueError: If it cannot match the given text with the USAS tag
+                regex, which is `[A-Z](\d+)?((\.\d+)+)?`.
         """
 
         tag_match = TAG_RE.match(usas_tag_text)
@@ -124,11 +144,6 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
         if tag_match:
             tag = tag_match.group()
             usas_tag_text = TAG_RE.sub("", usas_tag_text)
-        elif ALT_TAG_RE.match(usas_tag_text):
-            alt_tag_match = ALT_TAG_RE.match(usas_tag_text)
-            assert alt_tag_match is not None
-            tag = alt_tag_match.group()
-            usas_tag_text = ALT_TAG_RE.sub("", usas_tag_text)
         else:
             raise ValueError(
                 f"Cannot find the tag for this USAS tag text: {usas_tag_text}"
@@ -188,7 +203,7 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
 
     token_usas_tags: list[USASTagGroup] = []
 
-    for usas_tag_group in usas_tag_group_text.split(" "):
+    for usas_tag_group in re.findall(r"\S+", usas_tag_group_text):
         usas_tags: list[USASTag] = []
         for usas_tag_text in usas_tag_group.split("/"):
             usas_tags.append(parse_usas_tag(usas_tag_text))
