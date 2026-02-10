@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-TAG_RE = re.compile(r"^[A-Z](\d+)?((\.\d+)+)?")
+TAG_RE = re.compile(r"^[A-Z](\d+)((\.\d+)+)?")
+PUNCT_RE = re.compile(r"^PUNCT")
 POSITIVE_MARKERS_RE = re.compile(r"\++")
 NEGATIVE_MARKERS_RE = re.compile(r"\-+")
 
@@ -106,6 +107,8 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
 
     The whitespace separation can be one or more spaces, i.e. `    ` or ` `
 
+    A USAS tag can be also be `PUNCT` which represents punctuation.
+
     Complex examples of `usas_tag_group_text`:
     `L1 E3- O4.2- X5.2+ A6.2- A1.7- A7- W3 L2 F1 S1.2.4- Z2 Z2/S2mf Z3 O4.3 G1.2 G1.2/S2mf`
 
@@ -117,7 +120,7 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
     Raises:
         ValueError: If the USAS tags within the given text cannot be parsed
             as a USAS tag, whereby each USAS tag after whitespace and `/` split
-            should match the following regex: `[A-Z](\d+)?((\.\d+)+)?`.
+            should match the following regex: `[A-Z](\d+)((\.\d+)+)?` or `PUNCT`.
     """
 
     def parse_usas_tag(usas_tag_text: str) -> USASTag:
@@ -135,15 +138,19 @@ def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
             USASTag: A structured format of the USAS tag.
         Raises:
             ValueError: If it cannot match the given text with the USAS tag
-                regex, which is `[A-Z](\d+)?((\.\d+)+)?`.
+                regex, which is `[A-Z](\d+)((\.\d+)+)?` or `PUNCT`.
         """
 
         tag_match = TAG_RE.match(usas_tag_text)
+        punct_match = PUNCT_RE.match(usas_tag_text)
         tag = ""
 
         if tag_match:
             tag = tag_match.group()
             usas_tag_text = TAG_RE.sub("", usas_tag_text)
+        elif punct_match:
+            tag = punct_match.group()
+            usas_tag_text = PUNCT_RE.sub("", usas_tag_text)
         else:
             raise ValueError(
                 f"Cannot find the tag for this USAS tag text: {usas_tag_text}"

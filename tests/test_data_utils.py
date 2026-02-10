@@ -109,6 +109,12 @@ def test_parse_usas_token_group() -> None:
         ])
     ]
     assert result == expected
+
+    # Test that it can parse the whole USAS tagset
+    for usas_tag in data_utils.load_usas_mapper(None, None).keys():
+        result = data_utils.parse_usas_token_group(usas_tag)
+        expected = [USASTagGroup(tags=[USASTag(tag=usas_tag)])]
+        assert result == expected
     
     # Test edge cases
     result = data_utils.parse_usas_token_group("")
@@ -119,6 +125,10 @@ def test_parse_usas_token_group() -> None:
     assert result == expected
 
     result = data_utils.parse_usas_token_group("   ")
+    assert result == expected
+
+    result = data_utils.parse_usas_token_group("PUNCT")
+    expected = [USASTagGroup(tags=[USASTag(tag="PUNCT")])]
     assert result == expected
     
     # Test invalid tag format
