@@ -1,10 +1,17 @@
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Type, TypeVar, cast
 
 import spacy
 from pydantic import BaseModel, Field, model_validator
+from spacy.tokens import Doc
 
-from usas_csv_auto_labeling.data_utils import USASTag, USASTagGroup
+from usas_csv_auto_labeling.data_utils import (
+    USASTag,
+    USASTagGroup,
+    get_all_mwe_token_indexes,
+    parse_usas_token_group,
+)
 
+ATTRIBUTE_TYPE = TypeVar("ATTRIBUTE_TYPE")
 
 class TaggedText(BaseModel):
     """
@@ -43,7 +50,7 @@ class TaggedText(BaseModel):
     is a MWE then it is assigned an index starting from 1 if a token is part of more than
     one MWE then it is assigned two MWE indexes, e.g. `set([1,2])` means that the token for
     that index is part of MWE 1 and 2. An empty set represents a token that is not part
-    of any MWE.
+    of any MWE. TO NOTE: USAS historically does not support overlapping MWEs.
     """
     text: str = Field(title="Text", description="The text that was tagged", examples=["This is a sentence.", ""])
     tokens: list[str] = Field(title="Tokens", description="The tokens of the text that was tagged", examples=[["This", "is", "a", "sentence", "."], []])
@@ -94,7 +101,7 @@ def spacy_sentence_splitter(spacy_pipeline: spacy.Language) -> Callable[[str], I
         ValueError: If the given spaCy pipeline does not support sentence splitting.
     """
     def _sentence_splitter(text: str) -> Iterable[str]:
-        doc = spacy_pipeline(text)
+        doc: Doc = spacy_pipeline(text)
         for sentence in doc.sents:
             yield sentence.text
 
@@ -102,7 +109,132 @@ def spacy_sentence_splitter(spacy_pipeline: spacy.Language) -> Callable[[str], I
 
 def tag_text(text: str,
              tagger: spacy.Language,
-             sentence_splitter: Callable[[str], Iterable[str]] | None = None
+             sentence_splitter: Callable[[str], Iterable[str]] | None = None,
+             lemma_token_extension: str | None = None, # lemma_
+             pos_token_extension: str | None = None, # pos_
+             token_text_extension: str = "text",
+             usas_token_extension: str = "_.pymusas_tags",
+             mwe_token_extension: str = "_.pymusas_mwe_indexes"
              ) -> Iterable[TaggedText]:
+    """
+    Tags the text using the given, `tagger`, spacy pipeline.
 
-    yield ""
+    Args:
+        text: The text to tag.
+        tagger: The spaCy pipeline to use for tagging.
+        sentence_splitter: An optional function that splits a given text into sentences.
+            If not provided, the text will not be split into sentences before tagging.
+        lemma_token_extension: The name of the attribute to get the lemma of a token
+            from the spacy Token object. If not provided, the lemma will not be extracted.
+        pos_token_extension: The name of the attribute to get the POS tag of a token
+            from the spacy Token object. If not provided, the POS tag will not be extracted.
+        token_text_extension: The name of the attribute to get the text of a token
+            from the spacy Token object.
+        usas_token_extension: The name of the custom attribute to get the USAS tags of a token
+            from the spacy Token object.
+        mwe_token_extension: The name of the custom attribute to get the MWE indexes of a token
+            from the spacy Token object.
+
+    Yields:
+        An iterable of TaggedText objects, where each TaggedText object corresponds
+            to a sentence in the input text. If `sentence_splitter` is not provided,
+            the iterable will only contain one TaggedText object.
+    """
+    def get_spacy_attribute(spacy_object: object,
+                            attribute_name: str,
+                            expected_type: Type[ATTRIBUTE_TYPE]) -> ATTRIBUTE_TYPE:
+        """
+        Gets an attribute from a spaCy object, whereby the attribute name can be
+        prefixed with "_." to get a custom attribute. This function does not support
+        nested attributes, e.g. "_._.CUSTOM_ATTRIBUTE".
+
+        Args:
+            spacy_object: The spaCy object to get the attribute from.
+            attribute_name: The name of the attribute to get. If the attribute name starts with "_.",
+                it is assumed to be a custom attribute.
+            expected_type: The type that the attribute is expected to be.
+
+        Returns:
+            The value of the attribute.
+
+        Raises:
+            ValueError: If the attribute is not of the expected type.
+        """
+        spacy_custom_attribute = False
+        if attribute_name[:2] == "_.":
+            spacy_custom_attribute = True
+            attribute_name = attribute_name[2:]
+        
+        attribute_value = None
+        if spacy_custom_attribute:
+            attribute_value = getattr(getattr(spacy_object, "_"), attribute_name)
+        else:
+            attribute_value = getattr(spacy_object, attribute_name)
+        
+        if not isinstance(attribute_value, expected_type):
+            raise ValueError(f"Expected {attribute_name} to be of type {expected_type}, "
+                             f"but got {type(attribute_value)}")
+        return attribute_value
+
+    
+    def _process_text(text_to_process: str) -> TaggedText:
+        tagged_text: Doc = tagger(text_to_process)
+
+        tokens: list[str] = []
+        lemmas: list[str] | None = []
+        pos_tags: list[str] | None = []
+        usas_tag_groups: list[list[USASTagGroup]] = []
+        mwe_indexes: list[set[int]] = []
+        all_mwe_token_indexes_with_min_value: set[tuple[frozenset[int], int]] = set()
+
+        for token in tagged_text:
+            token_text = get_spacy_attribute(token, token_text_extension, str)
+            tokens.append(token_text)
+            
+            if lemma_token_extension is not None:
+                lemma = get_spacy_attribute(token, lemma_token_extension, str)
+                lemmas.append(lemma)
+            
+            if pos_token_extension is not None:
+                pos_tag = get_spacy_attribute(token, pos_token_extension, str)
+                pos_tags.append(pos_tag)
+
+            usas_tags = cast(list[str],
+                                        get_spacy_attribute(token, usas_token_extension, list))
+            token_usas_tag_groups = parse_usas_token_group(" ".join(usas_tags))
+            usas_tag_groups.append(token_usas_tag_groups)
+
+            
+            
+            token_mwe_indexes_range = cast(list[tuple[int, int]],
+                                                                  get_spacy_attribute(token, mwe_token_extension, list))
+            
+            token_mwe_indexes = get_all_mwe_token_indexes(token_mwe_indexes_range)
+            if token_mwe_indexes:
+                all_mwe_token_indexes_with_min_value.add((token_mwe_indexes, min(token_mwe_indexes)))
+            mwe_indexes.append(set())
+
+        # Computationally mwe indexes in token order has increased the complexity
+        # of the code and runtime, but it should make it easier for the annotators
+        # to read.
+        sorted_all_mwe_token_indexes_with_min_value = sorted(all_mwe_token_indexes_with_min_value, key=lambda x: x[1])
+        for mwe_index_value, mwe_index_with_min_value in enumerate(sorted_all_mwe_token_indexes_with_min_value, start=1):
+            for mwe_index in mwe_index_with_min_value[0]:
+                mwe_indexes[mwe_index].add(mwe_index_value)
+            
+        return TaggedText(
+            text=token_text,
+            tokens=tokens,
+            lemmas=lemmas,
+            pos_tags=pos_tags,
+            usas_tags=usas_tag_groups,
+            mwe_indexes=mwe_indexes
+        )
+
+        return tagged_text
+
+    if sentence_splitter is not None:
+        for sentence in sentence_splitter(text):
+            yield _process_text(sentence)
+    else:
+        yield _process_text(text)

@@ -6,6 +6,49 @@ from usas_csv_auto_labeling import data_utils
 from usas_csv_auto_labeling.data_utils import USASTag, USASTagGroup
 
 
+def test_get_all_mwe_token_indexes() -> None:
+    """Test the get_all_mwe_token_indexes function with various MWE index ranges."""
+
+    # Verify return type is frozenset
+    result = data_utils.get_all_mwe_token_indexes([(1, 4)])
+    assert isinstance(result, frozenset)
+    
+    # Test single token range
+    result = data_utils.get_all_mwe_token_indexes([(5, 6)])
+    expected = frozenset({5})
+    assert result == expected
+
+    # Test single MWE range
+    result = data_utils.get_all_mwe_token_indexes([(0, 3)])
+    expected = frozenset({0, 1, 2})
+    assert result == expected
+
+    # Test multiple non-overlapping MWE ranges
+    result = data_utils.get_all_mwe_token_indexes([(0, 2), (5, 7)])
+    expected = frozenset({0, 1, 5, 6})
+    assert result == expected
+
+    # Test multiple overlapping MWE ranges
+    result = data_utils.get_all_mwe_token_indexes([(0, 4), (2, 6)])
+    expected = frozenset({0, 1, 2, 3, 4, 5})
+    assert result == expected
+
+    # Test multiple ranges with some single tokens
+    result = data_utils.get_all_mwe_token_indexes([(0, 1), (3, 4), (6, 8)])
+    expected = frozenset({0, 3, 6, 7})
+    assert result == expected
+
+    # Test with completely overlapping ranges
+    result = data_utils.get_all_mwe_token_indexes([(2, 5), (2, 5)])
+    expected = frozenset({2, 3, 4})
+    assert result == expected
+
+    # Test empty input
+    result = data_utils.get_all_mwe_token_indexes([])
+    expected = frozenset()
+    assert result == expected
+
+
 def test_parse_usas_token_group() -> None:
     """Test the parse_usas_token_group function with various USAS tag formats."""
     
@@ -202,5 +245,5 @@ def test_load_usas_mapper_duplicate_key() -> None:
     with pytest.raises(KeyError):
         duplicate_key_usas_tag_description_file = Path(__file__).parent / "data/data_utils/test_usas_mapper_duplicate_key.yaml"
         data_utils.load_usas_mapper(duplicate_key_usas_tag_description_file, None)
-        
+
 

@@ -94,6 +94,23 @@ class USASTagGroup(BaseModel):
     )
 
 
+def get_all_mwe_token_indexes(mwe_index_slices: list[tuple[int, int]]) -> frozenset[int]:
+    """
+    Given a list of tuples that represent the start and end indexes of a
+    Multi Word Expression (MWE), it returns a frozenset of all the token indexes
+    that are part of the MWE.
+
+    Args:
+        mwe_index_slices: A list of tuples that represent the start and end indexes of a
+            Multi Word Expression (MWE).
+
+    Returns:
+        A frozenset of all the token indexes that are part of the MWE.
+    """
+    all_mwe_token_indexes = set()
+    for mwe_index_range in mwe_index_slices:
+        all_mwe_token_indexes.update(range(*mwe_index_range))
+    return frozenset(all_mwe_token_indexes)
 
 
 def parse_usas_token_group(usas_tag_group_text: str) -> list[USASTagGroup]:
