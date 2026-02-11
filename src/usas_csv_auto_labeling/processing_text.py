@@ -22,7 +22,7 @@ class TaggedText(BaseModel):
         tokens (list[str]): The tokens of the text that was tagged.
         lemmas (list[str] | None):: The lemmas of the text that was tagged. Default None.
         pos_tags (list[str] | None): The POS tags of the text that was tagged. Default None.
-        usas_tags (list[USASTagGroup]): The USAS tags of the text that was tagged.
+        usas_tags (list[list[USASTagGroup]]): The USAS tags of the text that was tagged.
     """
     _usas_tags_example: list[list[USASTagGroup]] = [
         [
@@ -139,6 +139,12 @@ def tag_text(text: str,
         An iterable of TaggedText objects, where each TaggedText object corresponds
             to a sentence in the input text. If `sentence_splitter` is not provided,
             the iterable will only contain one TaggedText object.
+
+    Raises:
+        ValueError: If an extension for a token is not the expected type.
+            For lemma and pos, the expected type is str.
+            For usas_tags, the expected type is list[str].
+            For mwe_indexes, the expected type is list[tuple[int, int]].
     """
     def get_spacy_attribute(spacy_object: object,
                             attribute_name: str,
@@ -210,7 +216,7 @@ def tag_text(text: str,
                                                                   get_spacy_attribute(token, mwe_token_extension, list))
             
             token_mwe_indexes = get_all_mwe_token_indexes(token_mwe_indexes_range)
-            if token_mwe_indexes:
+            if len(token_mwe_indexes) > 1:
                 all_mwe_token_indexes_with_min_value.add((token_mwe_indexes, min(token_mwe_indexes)))
             mwe_indexes.append(set())
 
@@ -221,9 +227,15 @@ def tag_text(text: str,
         for mwe_index_value, mwe_index_with_min_value in enumerate(sorted_all_mwe_token_indexes_with_min_value, start=1):
             for mwe_index in mwe_index_with_min_value[0]:
                 mwe_indexes[mwe_index].add(mwe_index_value)
+
+        if lemma_token_extension is None:
+            lemmas = None
+        
+        if pos_token_extension is None:
+            pos_tags = None
             
         return TaggedText(
-            text=token_text,
+            text=text_to_process,
             tokens=tokens,
             lemmas=lemmas,
             pos_tags=pos_tags,
