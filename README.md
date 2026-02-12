@@ -1,5 +1,11 @@
 # USAS-CSV-Auto-Labeling
-Tool that annotates data with USAS labels for human verification in CSV format
+
+
+Tool that annotates data with USAS labels for human verification in Excel format (CSV format will be added at a later point).
+
+Currently the tool is very specific in that it only supports English, Spanish, Danish, and Dutch and it requires the data to be in a specific format.
+
+Before you can run the tool please follow the [setup guide](#setup) and [install the models](#models-to-install). 
 
 
 ## Setup
@@ -54,4 +60,72 @@ To run the tests (uses pytest and coverage) and generate a coverage report:
 
 ``` bash
 make test
+```
+
+### Models to install
+
+The following spaCy models are required to tag and sentence split the data:
+
+``` bash
+uv run python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_trf
+uv run python -m spacy download da_core_news_lg
+uv run python -m spacy download nl_core_news_md
+uv run python -m spacy download nl_core_news_lg
+uv run python -m spacy download es_core_news_sm
+uv run python -m spacy download es_dep_news_trf
+```
+
+The following will download all of the resources (lexicons and neural models) to run the [Hybrid USAS tagger](https://ucrel.github.io/pymusas/#hybrid) for each language:
+
+``` bash
+uv download_usas_hybrid_tagger_resources.py
+```
+
+## Tools
+
+### Tag data with USAS labels into Excel format
+
+This tool tags all text files in a given directory (following the format specified in the help shown below) taking into account the language of the text file and outputs an Excel spreadsheet per text file in a given output directory. The Excel spreadsheet will allow annotators to correct the USAS tags and Multi Word Expression (MWE) indexes produced by the USAS tagger, allowing you to create a Gold labelled USAS tagged and MWE indexed dataset that can be used for evaluating and/or training a USAS tagger on the data of your choice.
+
+Below is the help guide for the tool:
+
+``` bash
+uv run tag_data_to_excel.py --help
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ Usage: tag_data_to_excel.py [OPTIONS] DATA_PATH OUTPUT_PATH                                                                                                                                                                                                                                                                                                                                                                             
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ Tag all of the files in the given data directory (`data_path`) with pre loaded language taggers and write the results to the given output directory (`output_path`), in the same file structure as the data directory, in excel format.                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ The Excel file has the following columns:                                                                                                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ | id | sentence id | token id | token | lemma | POS | predicted USAS | predicted MWE | corrected USAS | corrected MWE |                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ whereby all but the `corrected` columns are filled in by the taggers.                                                                                                                                                                                                                                                                                                                                                                   
+ The `id` is in the following format `{language}|{wikipedia_article_name}|{sentence_id}|{token_id}`                                                                                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ The data directory file structure should be as follows:                                                                                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ data_path                                                                                                                                                                                                                                                                                                                                                                                                                               
+ |                                                                                                                                                                                                                                                                                                                                                                                                                                       
+ |__ language                                                                                                                                                                                                                                                                                                                                                                                                                            
+ |   |                                                                                                                                                                                                                                                                                                                                                                                                                                   
+ |   |__ wikipedia_article_name                                                                                                                                                                                                                                                                                                                                                                                                          
+ |   |   |                                                                                                                                                                                                                                                                                                                                                                                                                               
+ |   |   |__ file_name.txt                                                                                                                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+ Whereby the `language` is used to determine which tagger to use and both                                                                                                                                                                                                                                                                                                                                                                
+ the `language` and `wikipedia_article_name` are added to the ID of each token                                                                                                                                                                                                                                                                                                                                                           
+ tagged and written to the excel output file.                                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                                                                                         
+╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *    data_path        DIRECTORY  Path to the data directory [required]                                                                                                                                                                                                                                                                                                                                                                │
+│ *    output_path      PATH       Path to the output directory [required]                                                                                                                                                                                                                                                                                                                                                              │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --verbose-logging    --no-verbose-logging      Print verbose logging [default: no-verbose-logging]                                                                                                                                                                                                                                                                                                                                    │
+│ --overwrite          --no-overwrite            If the output path exists overwrite all files in it [default: no-overwrite]                                                                                                                                                                                                                                                                                                            │
+│ --help                                         Show this message and exit.                                                                                                                                                                                                                                                                                                                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
 ```

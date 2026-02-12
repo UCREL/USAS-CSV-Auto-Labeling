@@ -1,10 +1,10 @@
 .PHONY: lint
 lint:
 	@echo "Linting with Ruff:"
-	@uv run ruff check --fix-only src tests coding_style_format_example.py
-	@uv run ruff check src tests coding_style_format_example.py
+	@uv run ruff check --fix-only src tests coding_style_format_example.py tag_data_to_excel.py taggers.py download_usas_hybrid_tagger_resources.py
+	@uv run ruff check src tests coding_style_format_example.py tag_data_to_excel.py taggers.py download_usas_hybrid_tagger_resources.py
 	@echo "Type checking with Ty"
-	@uv run ty check src tests coding_style_format_example.py
+	@uv run ty check src tests coding_style_format_example.py tag_data_to_excel.py taggers.py download_usas_hybrid_tagger_resources.py
 
 .PHONY: test
 test:

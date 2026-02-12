@@ -23,6 +23,7 @@ class TaggedText(BaseModel):
         lemmas (list[str] | None):: The lemmas of the text that was tagged. Default None.
         pos_tags (list[str] | None): The POS tags of the text that was tagged. Default None.
         usas_tags (list[list[USASTagGroup]]): The USAS tags of the text that was tagged.
+        mwe_indexes (list[set[int]]): The MWE indexes of the text that was tagged.
     """
     _usas_tags_example: list[list[USASTagGroup]] = [
         [
