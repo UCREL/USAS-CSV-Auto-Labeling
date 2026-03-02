@@ -10,14 +10,15 @@ logger = logging.getLogger(__name__)
 
 def main(verbose_logging: Annotated[bool, typer.Option(help="Print verbose logging")] = False):
     """
-    Downloads all of the USAS tagger resources if they have not already been downloaded.
+    Downloads all of the USAS tagger resources if they have not already been downloaded as well
+    as the Stanza models.
     """
     if verbose_logging:
         logging.basicConfig(level=logging.INFO)
     else:
         logging.basicConfig(level=logging.ERROR)
 
-    logger.info("Downloading the USAS tagger resources if they have not already been downloaded")
+    logger.info("Downloading the USAS tagger resources and Stanza models if they have not already been downloaded")
 
     logger.info("Downloading the English Tagger")
     _ = taggers.get_english_hybrid_tagger()
@@ -36,7 +37,11 @@ def main(verbose_logging: Annotated[bool, typer.Option(help="Print verbose loggi
     _ = taggers.get_dutch_hybrid_tagger()
     _ = taggers.get_dutch_sentence_splitter()
 
-    logger.info("Finished downloading all of the USAS tagger resources")
+    logger.info("Downloading the Hindi Tagger and Stanza model")
+    _ = taggers.get_hindi_neural_tagger()
+    _ = taggers.get_hindi_stanza_tagger()
+
+    logger.info("Finished downloading all of the USAS tagger resources and Stanza models")
         
 
 if __name__ == "__main__":
