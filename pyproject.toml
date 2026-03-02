@@ -36,6 +36,7 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "pymusas[neural]>=0.4.0",
     "spacy>=3.8.11",
+    "stanza>=1.11.1",
     "typer>=0.3.0,<1.0.0",
     "xlsxwriter>=3.2.9",
 ]
@@ -47,6 +48,11 @@ build-backend = "uv_build"
 [project.readme]
 file = "README.md"
 content-type = "text/markdown"
+
+[project.optional-dependencies]
+stanza = [
+    "stanza>=1.11.1",
+]
 
 
 [dependency-groups]

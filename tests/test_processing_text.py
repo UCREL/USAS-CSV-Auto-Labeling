@@ -1,4 +1,6 @@
-from typing import Callable, Iterable
+from contextlib import contextmanager
+from typing import Callable, Generator, Iterable
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 import spacy
@@ -10,6 +12,7 @@ from usas_csv_auto_labeling.processing_text import (
     TaggedText,
     spacy_sentence_splitter,
     tag_text,
+    tag_text_with_stanza,
 )
 
 
@@ -422,3 +425,100 @@ def test_tag_text_simple(lemma_attribute_name: str | None,
             mwe_token_extension="_." + pymusas_mwe_index_attribute_name
         ))
 
+class MockStanzaToken():
+    def __init__(self, text: str, lemma: str, pos: str):
+        self.text = text
+        self.lemma = lemma
+        self.upos = pos
+
+class MockStanzaSentence():
+    def __init__(self, tokens: list[MockStanzaToken], text: str):
+        self.words = tokens
+        self.text = text
+
+class MockStanzaOutput():
+    def __init__(self, tokens: list[str], lemmas: list[str], pos: list[str], text: str):
+        self.text = text
+        self.lemma = lemmas
+        self.pos = pos
+        mock_stanza_sentence = MockStanzaSentence(tokens=[MockStanzaToken(tokens[i], lemmas[i], pos[i]) for i in range(len(tokens))], text=text)
+        self.sentences: list[list[MockStanzaToken]] = [mock_stanza_sentence]
+
+@contextmanager
+def stanza_pipeline_mock(mock_output: MockStanzaOutput) -> Generator[None]:
+    with patch("usas_csv_auto_labeling.processing_text.StanzaPipeline") as mock_pipeline:
+        # Test the mock
+        from usas_csv_auto_labeling.processing_text import StanzaPipeline
+        # Configure the mock to return a MagicMock instance
+        #mock_instance = MagicMock(side_effect=lambda: mock_output)
+        mock_instance = MagicMock(side_effect=create_autospec(StanzaPipeline.__call__, return_value=mock_output))
+        #mock_instance.__call__ = mock_output # MagicMock(return_value=mock_output)
+        mock_instance.__call__ = create_autospec(StanzaPipeline.__call__, return_value=mock_output) # MagicMock(return_value=mock_output)
+        mock_pipeline.return_value = mock_instance
+        yield None
+
+def test_text_with_stanza():
+    # Define the deterministic output you want the mock to return
+    mock_output_token_data = [
+        {'token': 'मैंने', 'lemma': 'मैं', 'pos': 'PRON'},
+        {'token': 'एक', 'lemma': 'एक', 'pos': 'NUM'},
+        {'token': 'किताब', 'lemma': 'किताब', 'pos': 'NOUN'},
+        {'token': 'पढ़ी', 'lemma': 'पढना', 'pos': 'VERB'},
+        {'token': '।', 'lemma': '।', 'pos': 'PUNCT'}
+    ]
+
+    text = "मैंने एक किताब पढ़ी।"
+    words: list[str] = []
+    lemmas: list[str] = []
+    pos_tags: list[str] = []
+    for token_data in mock_output_token_data:
+        words.append(token_data['token'])
+        lemmas.append(token_data['lemma'])
+        pos_tags.append(token_data['pos'])
+    mock_output = MockStanzaOutput(tokens=words, lemmas=lemmas, pos=pos_tags, text=text)
+    # Mock the tagger
+    lemma_attribute_name = "lemma_"
+    pos_tag_attribute_name = "pos_"
+    pymusas_tag_attribute_name = "pymusas_tags"
+    pymusas_mwe_index_attribute_name = "pymusas_mwe_indexes"
+    pymusas_tags = [
+        ["Z8", "Z1", "Z3"],
+        ["N1", "T3", "Z5"],
+        ["Q4.1", "Q1.2", "I1"],
+        ["Q1.2", "Q4.1", "P1"],
+        ["N3", "A13", "I2"]
+    ]
+    mwe_indexes = [[(0, 1)], [(1, 2)], [(2, 3)], [(3, 4)], [(4, 5)]]
+    expected_usas_tag_groups: list[list[USASTagGroup]] = []
+    for token_usas_tags in pymusas_tags:
+        token_usas_tag_groups: list[USASTagGroup] = []
+        for token_usas_tag in token_usas_tags:
+            token_usas_tag_groups.append(USASTagGroup(tags=[USASTag(tag=token_usas_tag)]))
+        expected_usas_tag_groups.append(token_usas_tag_groups)
+
+    mock_tagger = mock_pymusas_tagger(
+        words=words,
+        lemma_attribute_name=lemma_attribute_name,
+        lemmas=lemmas,
+        pos_tag_attribute_name=pos_tag_attribute_name,
+        pos_tags=pos_tags,
+        pymusas_tag_attribute_name=pymusas_tag_attribute_name,
+        pymusas_tags=pymusas_tags,
+        pymusas_mwe_index_attribute_name=pymusas_mwe_index_attribute_name,
+        mwe_indexes=mwe_indexes,
+        tagger_factory_name="tagging_test_component"
+    )
+
+    # Create a mock for the Pipeline class
+    with stanza_pipeline_mock(mock_output) as _:
+        from usas_csv_auto_labeling.processing_text import StanzaPipeline
+        pipeline = StanzaPipeline() # This is a Mock StanzaPipeLine
+        stanza_output = list(tag_text_with_stanza(text=text, stanza_tagger=pipeline, pymusas_tagger=mock_tagger))
+        assert len(stanza_output) == 1
+        assert stanza_output[0].tokens == words
+        assert stanza_output[0].lemmas == lemmas
+        assert stanza_output[0].pos_tags == pos_tags
+        assert stanza_output[0].usas_tags == expected_usas_tag_groups
+        assert stanza_output[0].mwe_indexes == [frozenset({})] * len(words)
+
+        

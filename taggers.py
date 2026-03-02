@@ -7,6 +7,7 @@ from pymusas.rankers.lexicon_entry import ContextualRuleBasedRanker
 from pymusas.spacy_api.taggers.hybrid import HybridTagger
 from pymusas.taggers.rules.mwe import MWERule
 from pymusas.taggers.rules.single_word import SingleWordRule
+from stanza.pipeline.core import Pipeline as StanzaPipeline
 
 from usas_csv_auto_labeling.processing_text import spacy_sentence_splitter
 
@@ -146,3 +147,15 @@ def get_spanish_hybrid_tagger() -> spacy.Language:
 
 def get_spanish_sentence_splitter() -> Callable[[str], Iterable[str]]:
     return spacy_sentence_splitter(spacy.load('es_core_news_sm'))
+
+
+def get_hindi_neural_tagger() -> spacy.Language:
+    nlp = spacy.blank("xx")
+    multilingyal_neural_tagger_pipeline = spacy.load("xx_none_none_none_multilingualbasebem",
+                                                               config={"components.pymusas_neural_tagger.top_n": 3})
+    nlp.add_pipe("pymusas_neural_tagger", source=multilingyal_neural_tagger_pipeline)
+    return nlp
+
+
+def get_hindi_stanza_tagger() -> StanzaPipeline:
+    return StanzaPipeline('hi', processors='tokenize,lemma,pos')

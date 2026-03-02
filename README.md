@@ -41,7 +41,7 @@ To run locally first ensure you have the following tools installted locally:
 When developing on the project you will want to install the Python package locally in editable format with all the extra requirements, this can be done like so:
 
 ```bash
-uv sync
+uv sync --all-extras
 ```
 
 ### Linting
@@ -74,13 +74,19 @@ uv run python -m spacy download nl_core_news_md
 uv run python -m spacy download nl_core_news_lg
 uv run python -m spacy download es_core_news_sm
 uv run python -m spacy download es_dep_news_trf
+uv run pip install https://github.com/UCREL/pymusas-models/releases/download/xx_none_none_none_multilingualbasebem-0.4.0/xx_none_none_none_multilingualbasebem-0.4.0-py3-none-any.whl
 ```
 
-The following will download all of the resources (lexicons and neural models) to run the [Hybrid USAS tagger](https://ucrel.github.io/pymusas/#hybrid) for each language:
+The following will download all of the resources (lexicons and neural models) to run the [Hybrid USAS tagger](https://ucrel.github.io/pymusas/#hybrid) and [Neural USAS tagger](https://ucrel.github.io/pymusas/#neural) and the relevant [Stanza models](https://stanfordnlp.github.io/stanza/) for each language:
 
 ``` bash
-uv download_usas_hybrid_tagger_resources.py
+uv download_tagger_resources.py
 ```
+
+The following languages require [Stanza models](https://stanfordnlp.github.io/stanza/) to tokenizer, lemmatise, and Part Of Speech (POS) tag the data. Below we state the language and the license of the model:
+
+* Hindi: The [Hindi model from Stanza](https://stanfordnlp.github.io/stanza/performance.html) was trained on the [Hindi UD treebank data](https://github.com/UniversalDependencies/UD_Hindi-HDTB) that is licensed under [Creative Commons License Attribution-NonCommercial-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.en).
+
 
 ## Tools
 
@@ -114,9 +120,16 @@ uv run tag_data_to_excel.py --help
  |   |   |                                                                                                                                                                                                                                                                                                                                                                                                                               
  |   |   |__ file_name.txt                                                                                                                                                                                                                                                                                                                                                                                                               
                                                                                                                                                                                                                                                                                                                                                                                                                                          
- Whereby the `language` is used to determine which tagger to use and both                                                                                                                                                                                                                                                                                                                                                                
- the `language` and `wikipedia_article_name` are added to the ID of each token                                                                                                                                                                                                                                                                                                                                                           
- tagged and written to the excel output file.                                                                                                                                                                                                                                                                                                                                                                                            
+ Whereby the `language` is used to determine which tagger to use and both                                                                                                                                                                                                                                                                                                                                              
+ the `language` and `wikipedia_article_name` are added to the ID of each token                                                                                                                                                                                                                                                                                                                                         
+ tagged and written to the excel output file.                                                                                                                                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                                                                                                                                                                       
+ Languages supported:                                                                                                                                                                                                                                                                                                                                                                                                  
+ * english                                                                                                                                                                                                                                                                                                                                                                                                             
+ * dutch                                                                                                                                                                                                                                                                                                                                                                                                               
+ * spanish                                                                                                                                                                                                                                                                                                                                                                                                             
+ * danish                                                                                                                                                                                                                                                                                                                                                                                                              
+ * hindi                                                                                                                                                                                                                                                                                                                                                                                            
                                                                                                                                                                                                                                                                                                                                                                                                                                          
 ╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ *    data_path        DIRECTORY  Path to the data directory [required]                                                                                                                                                                                                                                                                                                                                                                │

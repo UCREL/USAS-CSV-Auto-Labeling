@@ -3,22 +3,43 @@ import os
 import re
 import string
 from pathlib import Path
-from typing import Annotated, Callable, Iterable
+from typing import Annotated, Callable, Iterable, Callable
 
 import spacy
 import typer
 import xlsxwriter
+from stanza.pipeline.core import Pipeline as StanzaPipeline
 
 import taggers
 from usas_csv_auto_labeling.data_utils import load_usas_mapper
-from usas_csv_auto_labeling.processing_text import tag_text
+from usas_csv_auto_labeling.processing_text import tag_text, TaggedText, tag_text_with_stanza
 
 logger = logging.getLogger(__name__)
 
+
+def stanza_tagging(stanza_tagger: StanzaPipeline,
+                   pymusas_tagger: spacy.Language
+                   ) -> Callable[[str], Iterable[TaggedText]]:
+    def _tag_text(text: str) -> Iterable[TaggedText]:
+        return tag_text_with_stanza(text, stanza_tagger, pymusas_tagger)
+
+    return _tag_text
+
+def spacy_tagging(tagger: spacy.Language,
+                  sentence_splitter: Callable[[str], Iterable[str]] | None = None,
+                  lemma_token_extension: str | None = None, # lemma_
+                  pos_token_extension: str | None = None, # pos_
+                  token_text_extension: str = "text",
+                  usas_token_extension: str = "_.pymusas_tags",
+                  mwe_token_extension: str = "_.pymusas_mwe_indexes") -> Callable[[str], Iterable[TaggedText]]:
+    def _tag_text(text: str) -> Iterable[TaggedText]:
+        return tag_text(text, tagger, sentence_splitter, lemma_token_extension, pos_token_extension, token_text_extension, usas_token_extension, mwe_token_extension)
+
+    return _tag_text
+
 def tag_to_excel_sheet(input_data_file_path: Path,
                        output_excel_file_path: Path,
-                       usas_tagger: spacy.Language,
-                       sentence_splitter: Callable[[str], Iterable[str]],
+                       tagging_function: Callable[[str], Iterable[TaggedText]],
                        language: str,
                        wikipedia_article_name: str) -> None:
     usas_labels_and_descriptions = load_usas_mapper(usas_tag_descriptions_file=None,
@@ -34,8 +55,6 @@ def tag_to_excel_sheet(input_data_file_path: Path,
                                     "predicted MWE",
                                     "corrected USAS",
                                     "corrected MWE"]
-    lemma_attribute_name = "lemma_"
-    pos_tag_attribute_name = "pos_"
                         
     with input_data_file_path.open("r", encoding="utf-8") as f:
         with xlsxwriter.Workbook(str(output_excel_file_path),
@@ -56,7 +75,7 @@ def tag_to_excel_sheet(input_data_file_path: Path,
                                            "occurred for file: {input_file_name}")
             
             worksheet_row_index = 2
-            for sentence_id, tagged_text in enumerate(tag_text(text, usas_tagger, sentence_splitter, lemma_attribute_name, pos_tag_attribute_name)):
+            for sentence_id, tagged_text in enumerate(tagging_function(text)):
                 if tagged_text.lemmas is None:
                     raise ValueError(attribute_none_error_string.format(attribute="lemma", input_file_name=input_data_file_path))
                 if tagged_text.pos_tags is None:
@@ -149,6 +168,13 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
     Whereby the `language` is used to determine which tagger to use and both
     the `language` and `wikipedia_article_name` are added to the ID of each token
     tagged and written to the excel output file.
+
+    Languages supported:
+    * english
+    * dutch
+    * spanish
+    * danish
+    * hindi
     """
     if output_path.exists() and not overwrite:
         raise ValueError(f"Output path {output_path} already exists and overwrite is false "
@@ -174,13 +200,17 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
     dutch_tagger = taggers.get_dutch_hybrid_tagger()
     dutch_sentence_splitter = taggers.get_dutch_sentence_splitter()
 
+    hindi_tagger = taggers.get_hindi_neural_tagger()
+    hindi_stanza_tagger = taggers.get_hindi_stanza_tagger()
+
     logger.info("Finnish loading all of the taggers")
 
     lang_directory_tagger_mapper = {
         "english": english_tagger,
         "dutch": dutch_tagger,
         "spanish": spanish_tagger,
-        "danish": danish_tagger
+        "danish": danish_tagger,
+        "hindi": hindi_tagger
     }
 
     lang_directory_sentence_splitter_mapper = {
@@ -189,6 +219,17 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
         "spanish": spanish_sentence_splitter,
         "danish": danish_sentence_splitter
     }
+
+    lang_directory_stanza_tagger_mapper = {
+        "hindi": hindi_stanza_tagger
+    }
+
+    spacy_tagging_languages = set({
+        "english",
+        "dutch",
+        "spanish",
+        "danish"
+    })
 
     logger.info(f"Tagging all files in {data_path} and writing to {output_path}")
 
@@ -205,11 +246,25 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if output_file.exists() and overwrite:
             output_file.unlink()
-
-        language_tagger = lang_directory_tagger_mapper[language]
-        language_sentence_splitter = lang_directory_sentence_splitter_mapper[language]
         
-        tag_to_excel_sheet(data_file, output_file, language_tagger, language_sentence_splitter, language, wikipedia_article_name)
+        tagging_function: None | Callable[[str], Iterable[TaggedText]] = None
+        if language in spacy_tagging_languages:
+            language_tagger = lang_directory_tagger_mapper[language]
+            language_sentence_splitter = lang_directory_sentence_splitter_mapper[language]
+            tagging_function = spacy_tagging(language_tagger, language_sentence_splitter,
+                                                                               lemma_token_extension="lemma_", pos_token_extension="pos_",
+                                                                               token_text_extension="text",
+                                                                               usas_token_extension="_.pymusas_tags",
+                                                                               mwe_token_extension="_.pymusas_mwe_indexes")
+        if language in lang_directory_stanza_tagger_mapper:
+            stanza_tagger = lang_directory_stanza_tagger_mapper[language]
+            language_tagger = lang_directory_tagger_mapper[language]
+            tagging_function = stanza_tagging(stanza_tagger, language_tagger)
+        
+        if tagging_function is None:
+            raise ValueError(f"Language {language} is not supported as we do not have a tagging function for it.")
+        
+        tag_to_excel_sheet(data_file, output_file, tagging_function, language, wikipedia_article_name)
     
     logger.info(f"Finished processing all files in {data_path}")
         
