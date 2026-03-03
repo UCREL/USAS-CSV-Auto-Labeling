@@ -80,7 +80,7 @@ uv run pip install https://github.com/UCREL/pymusas-models/releases/download/xx_
 The following will download all of the resources (lexicons and neural models) to run the [Hybrid USAS tagger](https://ucrel.github.io/pymusas/#hybrid) and [Neural USAS tagger](https://ucrel.github.io/pymusas/#neural) and the relevant [Stanza models](https://stanfordnlp.github.io/stanza/) for each language:
 
 ``` bash
-uv download_tagger_resources.py
+uv run download_tagger_resources.py
 ```
 
 The following languages require [Stanza models](https://stanfordnlp.github.io/stanza/) to tokenizer, lemmatise, and Part Of Speech (POS) tag the data. Below we state the language and the license of the model:
