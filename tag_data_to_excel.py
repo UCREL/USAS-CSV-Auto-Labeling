@@ -175,6 +175,7 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
     * spanish
     * danish
     * hindi
+    * igbo
     """
     if output_path.exists() and not overwrite:
         raise ValueError(f"Output path {output_path} already exists and overwrite is false "

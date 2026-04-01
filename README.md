@@ -3,7 +3,7 @@
 
 Tool that annotates data with USAS labels for human verification in Excel format (CSV format will be added at a later point).
 
-Currently the tool is very specific in that it only supports English, Spanish, Danish, and Dutch and it requires the data to be in a specific format.
+Currently the tool is very specific in that it only supports English, Spanish, Danish, Dutch, Hindi, and Igbo and it requires the data to be in a specific format.
 
 Before you can run the tool please follow the [setup guide](#setup) and [install the models](#models-to-install). 
 
