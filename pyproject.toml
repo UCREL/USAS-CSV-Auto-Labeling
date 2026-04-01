@@ -53,6 +53,9 @@ content-type = "text/markdown"
 stanza = [
     "stanza>=1.11.1",
 ]
+igbo = [
+    "igbo-text>=0.1.3",
+]
 
 
 [dependency-groups]
