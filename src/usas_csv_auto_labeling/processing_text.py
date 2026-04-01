@@ -1,6 +1,7 @@
 from typing import Callable, Iterable, Type, TypeVar, cast
 
 import spacy
+from igbo_text import IgboText
 from pydantic import BaseModel, Field, model_validator
 from spacy import Vocab
 from spacy.tokens import Doc
@@ -358,3 +359,31 @@ def tag_text_with_stanza(text: str,
         spacy_doc = stanza_data_to_spacy_doc(pymusas_tagger.vocab, stanza_sentence)
         spacy_doc.user_data["original_text"] = sentence.text
         yield process_text(spacy_doc, pymusas_tagger, "lemma_", "pos_", "text", "_.pymusas_tags", "_.pymusas_mwe_indexes")
+
+
+def tag_igbo_text(text: str,
+                  pymusas_tagger: spacy.Language) -> Iterable[TaggedText]:
+    """
+    Igbo language specific. Sentence splits on newlines (expects the text to be a sentence per line),
+    and tokenises using igbo-text the text these attributes are then given to
+    the PyMUSAS tagger a sentence at a time,
+    which returns a Tagged Text per sentence from the given text.
+
+    Args:
+        text: The Igbo text to tag.
+        pymusas_tagger: A spaCy pipeline that outputs semantic tags (USAS) and MWE
+            indexes for each token to the custom attributes of the spacy Token object,
+            specifically the `_.pymusas_tags` and `_.pymusas_mwe_indexes` attributes.
+
+    Yields:
+        An iterable of TaggedText objects, where each TaggedText object corresponds
+            to a sentence in the input text.
+    """
+    igbo_text = IgboText()
+    for sentence in text.split("\n"):
+        tokens = igbo_text.tokenize(sentence)
+        spacy_doc = Doc(pymusas_tagger.vocab,
+                        words=tokens,
+                        spaces=[True] * len(tokens))
+        spacy_doc.user_data["original_text"] = sentence
+        yield process_text(spacy_doc, pymusas_tagger, None, None, "text", "_.pymusas_tags", "_.pymusas_mwe_indexes")

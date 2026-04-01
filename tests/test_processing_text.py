@@ -11,6 +11,7 @@ from usas_csv_auto_labeling.data_utils import USASTag, USASTagGroup
 from usas_csv_auto_labeling.processing_text import (
     TaggedText,
     spacy_sentence_splitter,
+    tag_igbo_text,
     tag_text,
     tag_text_with_stanza,
 )
@@ -520,5 +521,53 @@ def test_text_with_stanza():
         assert stanza_output[0].pos_tags == pos_tags
         assert stanza_output[0].usas_tags == expected_usas_tag_groups
         assert stanza_output[0].mwe_indexes == [frozenset({})] * len(words)
+
+
+def test_tag_igbo_text() -> None:
+    test_text = "Iri Ji ọhụrụ nke ndị"
+    expected_tokens = ['Iri', 'Ji', 'ọhụrụ', 'nke', 'ndị']
+    # Mock the tagger
+    lemmas = None
+    lemma_attribute_name = None
+    pos_tags = None
+    pos_tag_attribute_name = None
+    pymusas_tag_attribute_name = "pymusas_tags"
+    pymusas_mwe_index_attribute_name = "pymusas_mwe_indexes"
+    pymusas_tags = [
+        ["Z1", "Z3", "Z2"],
+        ["Z1", "Z3", "Z2"],
+        ["Z1", "Z3", "Z2"],
+        ["Z5", "Z6", "Z3"],
+        ["S2", "Z5", "M6"]
+    ]
+    mwe_indexes = [[(0, 1)], [(1, 2)], [(2, 3)], [(3, 4)], [(4, 5)]]
+    expected_usas_tag_groups: list[list[USASTagGroup]] = []
+    for token_usas_tags in pymusas_tags:
+        token_usas_tag_groups: list[USASTagGroup] = []
+        for token_usas_tag in token_usas_tags:
+            token_usas_tag_groups.append(USASTagGroup(tags=[USASTag(tag=token_usas_tag)]))
+        expected_usas_tag_groups.append(token_usas_tag_groups)
+
+    mock_tagger = mock_pymusas_tagger(
+        words=expected_tokens,
+        lemma_attribute_name=lemma_attribute_name,
+        lemmas=lemmas,
+        pos_tag_attribute_name=pos_tag_attribute_name,
+        pos_tags=pos_tags,
+        pymusas_tag_attribute_name=pymusas_tag_attribute_name,
+        pymusas_tags=pymusas_tags,
+        pymusas_mwe_index_attribute_name=pymusas_mwe_index_attribute_name,
+        mwe_indexes=mwe_indexes,
+        tagger_factory_name="tagging_test_component"
+    )
+
+    output = list(tag_igbo_text(text=test_text, pymusas_tagger=mock_tagger))
+    assert len(output) == 1
+    assert output[0].tokens == expected_tokens
+    assert output[0].lemmas == lemmas
+    assert output[0].pos_tags == pos_tags
+    assert output[0].usas_tags == expected_usas_tag_groups
+    assert output[0].mwe_indexes == [frozenset({})] * len(expected_tokens)
+
 
         

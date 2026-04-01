@@ -3,7 +3,7 @@ import os
 import re
 import string
 from pathlib import Path
-from typing import Annotated, Callable, Iterable, Callable
+from typing import Annotated, Callable, Iterable
 
 import spacy
 import typer
@@ -12,10 +12,20 @@ from stanza.pipeline.core import Pipeline as StanzaPipeline
 
 import taggers
 from usas_csv_auto_labeling.data_utils import load_usas_mapper
-from usas_csv_auto_labeling.processing_text import tag_text, TaggedText, tag_text_with_stanza
+from usas_csv_auto_labeling.processing_text import (
+    TaggedText,
+    tag_igbo_text,
+    tag_text,
+    tag_text_with_stanza,
+)
 
 logger = logging.getLogger(__name__)
 
+def igbo_tagging(pymusas_tagger: spacy.Language) -> Callable[[str], Iterable[TaggedText]]:
+    def _tag_text(text: str) -> Iterable[TaggedText]:
+        return tag_igbo_text(text, pymusas_tagger)
+
+    return _tag_text
 
 def stanza_tagging(stanza_tagger: StanzaPipeline,
                    pymusas_tagger: spacy.Language
@@ -75,16 +85,26 @@ def tag_to_excel_sheet(input_data_file_path: Path,
                                            "occurred for file: {input_file_name}")
             
             worksheet_row_index = 2
+            no_lemmas = False
+            no_pos_tags = False
             for sentence_id, tagged_text in enumerate(tagging_function(text)):
-                if tagged_text.lemmas is None:
-                    raise ValueError(attribute_none_error_string.format(attribute="lemma", input_file_name=input_data_file_path))
-                if tagged_text.pos_tags is None:
-                    raise ValueError(attribute_none_error_string.format(attribute="POS tag", input_file_name=input_data_file_path))
+                if tagged_text.lemmas is None and not no_lemmas:
+                    no_lemmas = True
+                    logger.info(attribute_none_error_string.format(attribute="lemma", input_file_name=input_data_file_path))
+                if tagged_text.pos_tags is None and not no_pos_tags:
+                    no_pos_tags = True
+                    logger.info(attribute_none_error_string.format(attribute="POS tag", input_file_name=input_data_file_path))
                 
                 for token_id in range(len(tagged_text.tokens)):
                     token = tagged_text.tokens[token_id]
-                    lemma = tagged_text.lemmas[token_id]
-                    pos_tag = tagged_text.pos_tags[token_id]
+                    
+                    lemma = "-"
+                    if tagged_text.lemmas is not None:
+                        lemma = tagged_text.lemmas[token_id]
+                    
+                    pos_tag = "-"
+                    if tagged_text.pos_tags is not None:
+                        pos_tag = tagged_text.pos_tags[token_id]
                     
                     usas_tag_groups = tagged_text.usas_tags[token_id]
                     usas_tag_strings = []
@@ -139,12 +159,66 @@ def traverse_directory(directory: Path) -> Iterable[Path]:
                 continue
             yield Path(root, file).resolve()
 
+
+def get_language_tagging_function(language: str) -> Callable[[str], Iterable[TaggedText]]:
+
+    def get_spacy_tagging_function(tagger: spacy.Language, sentence_splitter: Callable[[str], Iterable[str]] | None = None) -> Callable[[str], Iterable[TaggedText]]:
+        return spacy_tagging(tagger, sentence_splitter,
+                             lemma_token_extension="lemma_", pos_token_extension="pos_",
+                             token_text_extension="text",
+                             usas_token_extension="_.pymusas_tags",
+                             mwe_token_extension="_.pymusas_mwe_indexes")
+
+    language = language.strip().lower()
+    supported_languages = set({
+        "english",
+        "dutch",
+        "spanish",
+        "danish",
+        "hindi",
+        "igbo"
+    })
+
+    match language:
+        case "english":
+            english_tagger = taggers.get_english_hybrid_tagger()
+            english_sentence_splitter = taggers.get_english_sentence_splitter()
+            tagging_function = get_spacy_tagging_function(english_tagger, english_sentence_splitter)
+            return tagging_function
+        case "spanish":
+            spanish_tagger = taggers.get_spanish_hybrid_tagger()
+            spanish_sentence_splitter = taggers.get_spanish_sentence_splitter()
+            tagging_function = get_spacy_tagging_function(spanish_tagger, spanish_sentence_splitter)
+            return tagging_function
+        case "danish":
+            danish_tagger = taggers.get_danish_hybrid_tagger()
+            danish_sentence_splitter = taggers.get_danish_sentence_splitter()
+            tagging_function = get_spacy_tagging_function(danish_tagger, danish_sentence_splitter)
+            return tagging_function
+        case "dutch":
+            dutch_tagger = taggers.get_dutch_hybrid_tagger()
+            dutch_sentence_splitter = taggers.get_dutch_sentence_splitter()
+            tagging_function = get_spacy_tagging_function(dutch_tagger, dutch_sentence_splitter)
+            return tagging_function
+        case "hindi":
+            hindi_tagger = taggers.get_hindi_neural_tagger()
+            hindi_stanza_tagger = taggers.get_hindi_stanza_tagger()
+            tagging_function = stanza_tagging(hindi_stanza_tagger, hindi_tagger)
+            return tagging_function
+        case "igbo":
+            igbo_tagger = taggers.get_igbo_neural_tagger()
+            return igbo_tagging(igbo_tagger)
+        case _:
+            raise ValueError(f"Language {language} is not supported, "
+                             f"supported languages: {supported_languages}")
+    
+
 def main(data_path: Annotated[Path, typer.Argument(help="Path to the data directory", exists=True, file_okay=False, dir_okay=True, resolve_path=True)],
          output_path: Annotated[Path, typer.Argument(help="Path to the output directory", exists=False, resolve_path=True)],
          verbose_logging: Annotated[bool, typer.Option(help="Print verbose logging")] = False,
          overwrite: Annotated[bool, typer.Option(help="If the output path exists overwrite all files in it")] = False):
     """
-    Tag all of the files in the given data directory (`data_path`) with pre loaded language taggers
+    Tag all of the files in the given data directory (`data_path`) with pre downloaded language taggers
     and write the results to the given output directory (`output_path`), in the same file structure
     as the data directory, in excel format.
 
@@ -187,51 +261,6 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
     else:
         logging.basicConfig(level=logging.ERROR)
 
-    logger.info("Loading all of the taggers...")
-
-    english_tagger = taggers.get_english_hybrid_tagger()
-    english_sentence_splitter = taggers.get_english_sentence_splitter()
-    
-    spanish_tagger = taggers.get_spanish_hybrid_tagger()
-    spanish_sentence_splitter = taggers.get_spanish_sentence_splitter()
-
-    danish_tagger = taggers.get_danish_hybrid_tagger()
-    danish_sentence_splitter = taggers.get_danish_sentence_splitter()
-    
-    dutch_tagger = taggers.get_dutch_hybrid_tagger()
-    dutch_sentence_splitter = taggers.get_dutch_sentence_splitter()
-
-    hindi_tagger = taggers.get_hindi_neural_tagger()
-    hindi_stanza_tagger = taggers.get_hindi_stanza_tagger()
-
-    logger.info("Finnish loading all of the taggers")
-
-    lang_directory_tagger_mapper = {
-        "english": english_tagger,
-        "dutch": dutch_tagger,
-        "spanish": spanish_tagger,
-        "danish": danish_tagger,
-        "hindi": hindi_tagger
-    }
-
-    lang_directory_sentence_splitter_mapper = {
-        "english": english_sentence_splitter,
-        "dutch": dutch_sentence_splitter,
-        "spanish": spanish_sentence_splitter,
-        "danish": danish_sentence_splitter
-    }
-
-    lang_directory_stanza_tagger_mapper = {
-        "hindi": hindi_stanza_tagger
-    }
-
-    spacy_tagging_languages = set({
-        "english",
-        "dutch",
-        "spanish",
-        "danish"
-    })
-
     logger.info(f"Tagging all files in {data_path} and writing to {output_path}")
 
     for data_file in traverse_directory(data_path):
@@ -248,23 +277,7 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
         if output_file.exists() and overwrite:
             output_file.unlink()
         
-        tagging_function: None | Callable[[str], Iterable[TaggedText]] = None
-        if language in spacy_tagging_languages:
-            language_tagger = lang_directory_tagger_mapper[language]
-            language_sentence_splitter = lang_directory_sentence_splitter_mapper[language]
-            tagging_function = spacy_tagging(language_tagger, language_sentence_splitter,
-                                                                               lemma_token_extension="lemma_", pos_token_extension="pos_",
-                                                                               token_text_extension="text",
-                                                                               usas_token_extension="_.pymusas_tags",
-                                                                               mwe_token_extension="_.pymusas_mwe_indexes")
-        if language in lang_directory_stanza_tagger_mapper:
-            stanza_tagger = lang_directory_stanza_tagger_mapper[language]
-            language_tagger = lang_directory_tagger_mapper[language]
-            tagging_function = stanza_tagging(stanza_tagger, language_tagger)
-        
-        if tagging_function is None:
-            raise ValueError(f"Language {language} is not supported as we do not have a tagging function for it.")
-        
+        tagging_function = get_language_tagging_function(language)
         tag_to_excel_sheet(data_file, output_file, tagging_function, language, wikipedia_article_name)
     
     logger.info(f"Finished processing all files in {data_path}")

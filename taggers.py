@@ -159,3 +159,11 @@ def get_hindi_neural_tagger() -> spacy.Language:
 
 def get_hindi_stanza_tagger() -> StanzaPipeline:
     return StanzaPipeline('hi', processors='tokenize,lemma,pos')
+
+
+def get_igbo_neural_tagger() -> spacy.Language:
+    nlp = spacy.blank("xx")
+    multilingyal_neural_tagger_pipeline = spacy.load("xx_none_none_none_multilingualbasebem",
+                                                               config={"components.pymusas_neural_tagger.top_n": 3})
+    nlp.add_pipe("pymusas_neural_tagger", source=multilingyal_neural_tagger_pipeline)
+    return nlp
