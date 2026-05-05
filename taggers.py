@@ -1,6 +1,9 @@
 from typing import Callable, Iterable, cast
 
+import malaya
 import spacy
+from malaya.torch_model.huggingface import Tagging as MalayaTagging
+from malaya.torch_model.rnn import Stem as MalayaStem
 from pymusas.lexicon_collection import LexiconCollection, MWELexiconCollection
 from pymusas.pos_mapper import UPOS_TO_USAS_CORE, USAS_CORE_TO_UPOS
 from pymusas.rankers.lexicon_entry import ContextualRuleBasedRanker
@@ -166,4 +169,33 @@ def get_igbo_neural_tagger() -> spacy.Language:
     multilingyal_neural_tagger_pipeline = spacy.load("xx_none_none_none_multilingualbasebem",
                                                                config={"components.pymusas_neural_tagger.top_n": 3})
     nlp.add_pipe("pymusas_neural_tagger", source=multilingyal_neural_tagger_pipeline)
+    return nlp
+
+def get_all_malay_models() -> tuple[malaya.tokenizer.Tokenizer, malaya.tokenizer.SentenceTokenizer, MalayaStem, MalayaTagging]:
+    tokenizer = malaya.tokenizer.Tokenizer()
+    sentence_splitter = malaya.tokenizer.SentenceTokenizer()
+    lemmatizer = malaya.stem.huggingface('mesolitica/stem-lstm-512', force_check=True)
+    pos_tagger = malaya.pos.huggingface("mesolitica/pos-t5-small-standard-bahasa-cased", force_check=True)
+    return (tokenizer, sentence_splitter, lemmatizer, pos_tagger)
+
+
+def get_malay_hybrid_tagger() -> spacy.Language:
+    nlp = spacy.blank("xx")
+
+    malay_single_lexicon_url = ('https://raw.githubusercontent.com/UCREL/Multilingual-USAS/442dc9a975ea1c3b0db20246a5a58565a200d581/Malay/semantic_lexicon_ms.tsv')
+    lemma_lexicon_lookup = LexiconCollection.from_tsv(malay_single_lexicon_url, include_pos=False)
+    single_word_rule = SingleWordRule({}, lemma_lexicon_lookup)
+    word_rules = [single_word_rule]
+    ranker_arguments = ContextualRuleBasedRanker.get_construction_arguments(word_rules)
+    ranker = ContextualRuleBasedRanker(*ranker_arguments)
+    # POS that indicate a Punctuation and Numeric value
+    default_punctuation_tags = list(['PUNCT'])
+    default_number_tags = list(['NUM'])
+    tagger = cast(HybridTagger, nlp.add_pipe('pymusas_hybrid_tagger', config={"top_n": 3}))
+
+    tagger.initialize(rules=word_rules,
+                      ranker=ranker,
+                      default_punctuation_tags=default_punctuation_tags,
+                      default_number_tags=default_number_tags,
+                      pretrained_model_name_or_path="ucrelnlp/PyMUSAS-Neural-Multilingual-Base-BEM")
     return nlp

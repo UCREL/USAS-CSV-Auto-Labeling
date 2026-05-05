@@ -5,9 +5,12 @@ import string
 from pathlib import Path
 from typing import Annotated, Callable, Iterable
 
+import malaya
 import spacy
 import typer
 import xlsxwriter
+from malaya.torch_model.huggingface import Tagging as MalayaTagging
+from malaya.torch_model.rnn import Stem as MalayaStem
 from stanza.pipeline.core import Pipeline as StanzaPipeline
 
 import taggers
@@ -15,11 +18,22 @@ from usas_csv_auto_labeling.data_utils import load_usas_mapper
 from usas_csv_auto_labeling.processing_text import (
     TaggedText,
     tag_igbo_text,
+    tag_malay_text,
     tag_text,
     tag_text_with_stanza,
 )
 
 logger = logging.getLogger(__name__)
+
+def malay_tagging(tokenizer: malaya.tokenizer.Tokenizer,
+                  sentence_splitter: malaya.tokenizer.SentenceTokenizer,
+                  lemmatizer: MalayaStem,
+                  pos_tagger: MalayaTagging,
+                  pymusas_tagger: spacy.Language) -> Callable[[str], Iterable[TaggedText]]:
+    def _tag_text(text: str) -> Iterable[TaggedText]:
+        return tag_malay_text(text, tokenizer, sentence_splitter, lemmatizer, pos_tagger, pymusas_tagger)
+
+    return _tag_text
 
 def igbo_tagging(pymusas_tagger: spacy.Language) -> Callable[[str], Iterable[TaggedText]]:
     def _tag_text(text: str) -> Iterable[TaggedText]:
@@ -176,7 +190,8 @@ def get_language_tagging_function(language: str) -> Callable[[str], Iterable[Tag
         "spanish",
         "danish",
         "hindi",
-        "igbo"
+        "igbo",
+        "malay"
     })
 
     match language:
@@ -208,6 +223,10 @@ def get_language_tagging_function(language: str) -> Callable[[str], Iterable[Tag
         case "igbo":
             igbo_tagger = taggers.get_igbo_neural_tagger()
             return igbo_tagging(igbo_tagger)
+        case "malay":
+            tokenizer, sentence_splitter, lemmatizer, pos_tagger = taggers.get_all_malay_models()
+            malay_tagger = taggers.get_malay_hybrid_tagger()
+            return malay_tagging(tokenizer, sentence_splitter, lemmatizer, pos_tagger, malay_tagger)
         case _:
             raise ValueError(f"Language {language} is not supported, "
                              f"supported languages: {supported_languages}")
@@ -250,6 +269,7 @@ def main(data_path: Annotated[Path, typer.Argument(help="Path to the data direct
     * danish
     * hindi
     * igbo
+    * malay
     """
     if output_path.exists() and not overwrite:
         raise ValueError(f"Output path {output_path} already exists and overwrite is false "

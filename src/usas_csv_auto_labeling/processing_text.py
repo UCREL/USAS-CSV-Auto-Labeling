@@ -1,7 +1,11 @@
 from typing import Callable, Iterable, Type, TypeVar, cast
 
+import malaya
 import spacy
 from igbo_text import IgboText
+from malaya.torch_model.huggingface import Tagging as MalayaTagging
+from malaya.torch_model.rnn import Stem as MalayaStem
+from malaya_tagging_pipeline import stem_tokens, tag_tokens, word_tokenize
 from pydantic import BaseModel, Field, model_validator
 from spacy import Vocab
 from spacy.tokens import Doc
@@ -387,3 +391,38 @@ def tag_igbo_text(text: str,
                         spaces=[True] * len(tokens))
         spacy_doc.user_data["original_text"] = sentence
         yield process_text(spacy_doc, pymusas_tagger, None, None, "text", "_.pymusas_tags", "_.pymusas_mwe_indexes")
+
+def tag_malay_text(text: str,
+                   tokenizer: malaya.tokenizer.Tokenizer,
+                   sentence_splitter: malaya.tokenizer.SentenceTokenizer,
+                   lemmatizer: MalayaStem,
+                   pos_tagger: MalayaTagging,
+                   pymusas_tagger: spacy.Language) -> Iterable[TaggedText]:
+    """
+    Malay language specific. Sentence splits, word tokenizes, lemmatizes, and POS tags 
+    using the given tokenizer, sentence splitter, lemmatizer, and pos tagger. These 
+    attributes are then given to the PyMUSAS tagger a sentence at a time,
+    which returns a Tagged Text per sentence from the given text.
+
+    Args:
+        text: The Malay text to tag.
+        tokenizer: A Malay tokenizer to use for word tokenization.
+        sentence_splitter: A Malay sentence splitter to use for sentence splitting.
+        lemmatizer: A Malay lemmatizer to use for lemmatization.
+        pos_tagger: A Malay POS tagger to use for POS tagging.
+        pymusas_tagger: A spaCy pipeline that outputs semantic tags (USAS) and MWE
+            indexes for each token to the custom attributes of the spacy Token object,
+            specifically the `_.pymusas_tags` and `_.pymusas_mwe_indexes` attributes.
+
+    Yields:
+        An iterable of TaggedText objects, where each TaggedText object corresponds
+            to a sentence in the input text.
+    """
+    for sentence in sentence_splitter.tokenize(text):
+        tokens = word_tokenize(tokenizer, sentence, lowercase=False)
+        lemmas  = stem_tokens(lemmatizer, tokens)
+        pos_tags = tag_tokens(pos_tagger, tokens)
+        spaces = [True] * len(tokens)
+        spacy_doc = Doc(vocab=pymusas_tagger.vocab, words=tokens, spaces=spaces, pos=pos_tags, lemmas=lemmas)
+        spacy_doc.user_data["original_text"] = sentence
+        yield process_text(spacy_doc, pymusas_tagger, "lemma_", "pos_", "text", "_.pymusas_tags", "_.pymusas_mwe_indexes")

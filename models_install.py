@@ -18,6 +18,8 @@ class Languages(str, Enum):
     es = "Spanish"
     hi = "Hindi"
     ig = "Igbo"
+    ms = "Malay"
+
 
 class SpacyModel(str, Enum):
     en_sm  = "en_core_web_sm"
@@ -41,7 +43,8 @@ LANGUAGE_2_PREPROCESS_CALLABLE: dict[Languages, Callable[[], Any]] = {
     Languages.da: taggers.get_danish_sentence_splitter,
     Languages.nl: taggers.get_dutch_sentence_splitter,
     Languages.es: taggers.get_spanish_sentence_splitter,
-    Languages.hi: taggers.get_hindi_stanza_tagger
+    Languages.hi: taggers.get_hindi_stanza_tagger,
+    Languages.ms: taggers.get_all_malay_models
 }
 
 LANGUAGE_2_PYMUSAS_CALLABLE: dict[Languages, Callable[[], spacy.Language]] = {
@@ -50,7 +53,8 @@ LANGUAGE_2_PYMUSAS_CALLABLE: dict[Languages, Callable[[], spacy.Language]] = {
     Languages.nl: taggers.get_dutch_hybrid_tagger,
     Languages.es: taggers.get_spanish_hybrid_tagger,
     Languages.hi: taggers.get_hindi_neural_tagger,
-    Languages.ig: taggers.get_igbo_neural_tagger
+    Languages.ig: taggers.get_igbo_neural_tagger,
+    Languages.ms: taggers.get_malay_hybrid_tagger
 }
 
 LANGUAGE_2_PYMUSAS_SPACY_MODEL: dict[Languages, str] = {
@@ -74,7 +78,8 @@ SPACY_DESCRIPTIONS: dict[SpacyModel, str] = {
 }
 
 PREPROCESS_DESCRIPTIONS: dict[Languages, str] = {
-    Languages.hi: "Hindi (HDTB treebank) - (~200MB)"
+    Languages.hi: "Hindi (HDTB treebank) - (~200MB)",
+    Languages.ms: "Malay (Lemmatizer + POS tagger) - (~200MB)"
 }
 
 PYMUSAS_SPACY_MODELS_DESCRIPTIONS: dict[Languages, str] = {
@@ -83,7 +88,8 @@ PYMUSAS_SPACY_MODELS_DESCRIPTIONS: dict[Languages, str] = {
     Languages.nl: "PyMUSAS Multilingual Base Neural Model - (1089MB)",
     Languages.es: "PyMUSAS Multilingual Base Neural Model - (1089MB)",
     Languages.hi: "PyMUSAS Multilingual Base Neural Model - (1089MB)",
-    Languages.ig: "PyMUSAS Multilingual Base Neural Model - (1089MB)"
+    Languages.ig: "PyMUSAS Multilingual Base Neural Model - (1089MB)",
+    Languages.ms: "PyMUSAS Multilingual Base Neural Model - (1089MB)"
 }
 
 

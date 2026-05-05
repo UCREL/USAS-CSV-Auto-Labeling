@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from typing import Callable, Generator, Iterable
 from unittest.mock import MagicMock, create_autospec, patch
 
+import malaya
 import pytest
 import spacy
 from spacy import Language
@@ -12,6 +13,7 @@ from usas_csv_auto_labeling.processing_text import (
     TaggedText,
     spacy_sentence_splitter,
     tag_igbo_text,
+    tag_malay_text,
     tag_text,
     tag_text_with_stanza,
 )
@@ -562,6 +564,64 @@ def test_tag_igbo_text() -> None:
     )
 
     output = list(tag_igbo_text(text=test_text, pymusas_tagger=mock_tagger))
+    assert len(output) == 1
+    assert output[0].tokens == expected_tokens
+    assert output[0].lemmas == lemmas
+    assert output[0].pos_tags == pos_tags
+    assert output[0].usas_tags == expected_usas_tag_groups
+    assert output[0].mwe_indexes == [frozenset({})] * len(expected_tokens)
+
+@patch("usas_csv_auto_labeling.processing_text.MalayaTagging")
+@patch("usas_csv_auto_labeling.processing_text.MalayaStem")
+@patch("usas_csv_auto_labeling.processing_text.tag_tokens")
+def test_tag_malay_text(mock_tag_tokens, MockStem, MockTagger) -> None:
+    test_text = "Barah prostat atau kanser"
+    expected_tokens = ['Barah', 'prostat', 'atau', 'kanser', '.']
+    # Mock the tagger
+    lemmas = ['Barah', 'ostat', 'atau', 'kanser', '.']
+    
+    lemma_attribute_name = "lemma_"
+    pos_tags = ['PROPN', 'NOUN', 'PROPN', 'PROPN', 'PUNCT']
+    pos_tag_attribute_name = "pos_"
+    pymusas_tag_attribute_name = "pymusas_tags"
+    pymusas_mwe_index_attribute_name = "pymusas_mwe_indexes"
+    pymusas_tags = [
+        ["B2"],
+        ["B1"],
+        ["A5.4"],
+        ["B2"],
+        ["PUNCT"]
+    ]
+    mwe_indexes = [[(0, 1)], [(1, 2)], [(2, 3)], [(3, 4)], [(4, 5)]]
+    expected_usas_tag_groups: list[list[USASTagGroup]] = []
+    for token_usas_tags in pymusas_tags:
+        token_usas_tag_groups: list[USASTagGroup] = []
+        for token_usas_tag in token_usas_tags:
+            token_usas_tag_groups.append(USASTagGroup(tags=[USASTag(tag=token_usas_tag)]))
+        expected_usas_tag_groups.append(token_usas_tag_groups)
+
+    mock_tagger = mock_pymusas_tagger(
+        words=expected_tokens,
+        lemma_attribute_name=lemma_attribute_name,
+        lemmas=lemmas,
+        pos_tag_attribute_name=pos_tag_attribute_name,
+        pos_tags=pos_tags,
+        pymusas_tag_attribute_name=pymusas_tag_attribute_name,
+        pymusas_tags=pymusas_tags,
+        pymusas_mwe_index_attribute_name=pymusas_mwe_index_attribute_name,
+        mwe_indexes=mwe_indexes,
+        tagger_factory_name="tagging_test_component"
+    )
+    sentence_splitter = malaya.tokenizer.SentenceTokenizer()
+    tokenizer = malaya.tokenizer.Tokenizer()
+    lemma_mapper = {"prostat": "ostat"}
+    mock_lemma = MockStem.return_value
+    mock_lemma.stem_word.side_effect = lambda word: lemma_mapper.get(word, word)
+    mock_pos_tagger = MockTagger.return_value
+    mock_tag_tokens.side_effect = lambda pos_tagger, tokens: pos_tags
+    
+    output = list(tag_malay_text(test_text, tokenizer, sentence_splitter, lemmatizer=mock_lemma, pos_tagger=mock_pos_tagger, pymusas_tagger=mock_tagger))
+
     assert len(output) == 1
     assert output[0].tokens == expected_tokens
     assert output[0].lemmas == lemmas
